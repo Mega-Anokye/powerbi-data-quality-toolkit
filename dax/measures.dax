@@ -1,0 +1,18 @@
+// Payment measures: only CONFIRMED payments count towards Total Paid.
+// Nothing is capped: if Total Paid suddenly looks huge, that is the cue to open the Data checks page.
+
+Initial Paid = CALCULATE ( SUM ( Orders[InitialAmount] ), Orders[InitialRef] <> "" )
+
+Final Paid = CALCULATE ( SUM ( Orders[FinalAmount] ), FILTER ( ALL ( Orders[FinalRef], Orders[CompletedDate] ), Orders[FinalRef] <> "" || NOT ISBLANK ( Orders[CompletedDate] ) ) )
+
+Total Paid = [Initial Paid] + [Final Paid]
+
+Unconfirmed Payments = SUM ( Orders[InitialAmount] ) + SUM ( Orders[FinalAmount] ) - [Total Paid]
+
+// Data checks
+Data Issues = COUNTROWS ( 'Data Checks' ) + 0
+High Data Issues = CALCULATE ( COUNTROWS ( 'Data Checks' ), 'Data Checks'[Severity] = "High" ) + 0
+Medium Data Issues = CALCULATE ( COUNTROWS ( 'Data Checks' ), 'Data Checks'[Severity] = "Medium" ) + 0
+Low Data Issues = CALCULATE ( COUNTROWS ( 'Data Checks' ), 'Data Checks'[Severity] = "Low" ) + 0
+Amount In High Issues = CALCULATE ( SUM ( 'Data Checks'[Amount Involved] ), 'Data Checks'[Severity] = "High" ) + 0
+Data Check Color = SWITCH ( SELECTEDVALUE ( 'Data Checks'[Severity] ), "High", "#C8423B", "Medium", "#E0A100", "Low", "#6CA6E0", "#8A8F98" )

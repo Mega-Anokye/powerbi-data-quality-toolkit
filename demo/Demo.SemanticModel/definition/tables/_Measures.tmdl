@@ -1,0 +1,51 @@
+table _Measures
+	lineageTag: 2d2c2cd5-4fe1-5cb4-8837-f1cf31a13a42
+
+	measure 'Initial Paid' = CALCULATE ( SUM ( Orders[InitialAmount] ), Orders[InitialRef] <> "" )
+		formatString: #,0
+		lineageTag: 371477fa-edf2-5303-b6e8-657fa00b7241
+
+	measure 'Final Paid' = CALCULATE ( SUM ( Orders[FinalAmount] ), FILTER ( ALL ( Orders[FinalRef], Orders[CompletedDate] ), Orders[FinalRef] <> "" || NOT ISBLANK ( Orders[CompletedDate] ) ) )
+		formatString: #,0
+		lineageTag: cdcd3aa7-8720-589b-b2bf-cc333c58eff5
+
+	measure 'Total Paid' = [Initial Paid] + [Final Paid]
+		formatString: #,0
+		lineageTag: d54d9d29-1fcb-5d07-9a01-3af7b902aafc
+
+	measure 'Unconfirmed Payments' = SUM ( Orders[InitialAmount] ) + SUM ( Orders[FinalAmount] ) - [Total Paid]
+		formatString: #,0
+		lineageTag: 8dc2ee05-1544-5d2d-bbd5-6dbcc53f337e
+
+	measure 'Data Issues' = COUNTROWS ( 'Data Checks' ) + 0
+		formatString: #,0
+		lineageTag: 1c669b31-e553-5e31-b768-d1eddcb87a7f
+
+	measure 'High Data Issues' = CALCULATE ( COUNTROWS ( 'Data Checks' ), 'Data Checks'[Severity] = "High" ) + 0
+		formatString: #,0
+		lineageTag: a0d16217-9fa2-52d8-9f9d-2df4b5087579
+
+	measure 'Medium Data Issues' = CALCULATE ( COUNTROWS ( 'Data Checks' ), 'Data Checks'[Severity] = "Medium" ) + 0
+		formatString: #,0
+		lineageTag: cb9c84e1-aceb-5faa-a449-879811c4430a
+
+	measure 'Low Data Issues' = CALCULATE ( COUNTROWS ( 'Data Checks' ), 'Data Checks'[Severity] = "Low" ) + 0
+		formatString: #,0
+		lineageTag: 84dc3cc3-bc93-5809-8f4b-74d6462ebffc
+
+	measure 'Amount In High Issues' = CALCULATE ( SUM ( 'Data Checks'[Amount Involved] ), 'Data Checks'[Severity] = "High" ) + 0
+		formatString: #,0
+		lineageTag: 0f4e398e-8051-5031-9f31-a9d889627d7c
+
+	measure 'Data Check Color' = SWITCH ( SELECTEDVALUE ( 'Data Checks'[Severity] ), "High", "#C8423B", "Medium", "#E0A100", "Low", "#6CA6E0", "#8A8F98" )
+		lineageTag: 0fcb5289-5220-5094-b2e7-1cdaf6ba0da5
+
+	column _
+		isHidden
+		lineageTag: 9dcb868b-f09d-5005-8fa4-bb92fee0f982
+		isNameInferred
+		sourceColumn: [_]
+
+	partition _Measures = calculated
+		mode: import
+		source = ROW("_", BLANK())

@@ -1,0 +1,4 @@
+expression DataFolder = "C:\powerbi-data-quality-toolkit\sample-data\" meta [IsParameterQuery=true, Type="Text", IsParameterQueryRequired=true]
+	lineageTag: 2fa86648-3fea-5303-a3fb-b3cab54763c3
+
+	annotation PBI_ResultType = Text

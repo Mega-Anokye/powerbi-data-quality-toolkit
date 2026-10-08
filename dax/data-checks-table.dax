@@ -1,0 +1,57 @@
+// Data Checks - a calculated table that re-checks the data on every refresh.
+// One row per suspicious entry: where it is, which field, what was entered, what is wrong, what to do.
+// Tables used: Orders (one row per order) and Deliveries (one row per delivery on an order).
+// Adapt the ID rules (order IDs: 10 digits starting 71, delivery IDs: 10 digits starting 88) to your own formats.
+VAR D0 = TODAY()
+VAR B0 = SELECTCOLUMNS(Orders, "I", "Orders row " & [RowID], "F", [OrderID], "T", [Vendor], "Inv", [InvoiceAmount], "Ini", [InitialAmount], "Fin", [FinalAmount], "IR", TRIM([InitialRef]), "FR", TRIM([FinalRef]), "PC", [CompletedDate], "IP", [InitialPaidDate], "FC", [ApprovedDate], "SD", [SubmittedDate], "AD", [AssignedDate], "ES", [EffectiveStatus], "AC", [VendorAccount], "VN", [VehicleNumber], "TM", [VendorMatch], "TT", [VendorNameTyped])
+VAR DO0 = SELECTCOLUMNS(Deliveries, "I", "Deliveries row " & [RowID], "F", [OrderID], "DN", [DeliveryID], "DM", [CustomerMatch], "DT", [CustomerNameTyped])
+// helper columns: each vendor's median invoice, duplicate counts, who else uses this account, the vendor's usual account
+VAR B = ADDCOLUMNS(B0,
+  "Med", VAR t = [T] RETURN MEDIANX(FILTER(B0, [T] = t && [Inv] > 0 && [Inv] < 1000000), [Inv]),
+  "nF", VAR f = [F] RETURN COUNTROWS(FILTER(B0, [F] = f)),
+  "nIR", VAR r = [IR] RETURN IF(r = "", 0, COUNTROWS(FILTER(B0, [IR] = r))),
+  "nFR", VAR r = [FR] RETURN IF(r = "", 0, COUNTROWS(FILTER(B0, [FR] = r))),
+  "nAS", VAR a = [AC] VAR t = [T] RETURN COUNTROWS(FILTER(B0, [AC] = a && [T] = t)),
+  "AO", VAR a = [AC] VAR t = [T] RETURN MAXX(FILTER(B0, [AC] = a && [T] <> t), [T]),
+  "nT", VAR t = [T] RETURN COUNTROWS(FILTER(B0, [T] = t)),
+  "MA", VAR t = [T] VAR tb = FILTER(B0, [T] = t) RETURN MAXX(TOPN(1, ADDCOLUMNS(DISTINCT(SELECTCOLUMNS(tb, "a", [AC])), "n", VAR x = [a] RETURN COUNTROWS(FILTER(tb, [AC] = x))), [n], DESC), [a]),
+  "nD", VAR f = [F] RETURN COUNTROWS(FILTER(DO0, [F] = f)))
+VAR DB = ADDCOLUMNS(DO0,
+  "nF", VAR f = [F] RETURN COUNTROWS(FILTER(B0, [F] = f)),
+  "T", VAR f = [F] RETURN MAXX(FILTER(B0, [F] = f), [T]),
+  "nDN", VAR d = [DN] RETURN COUNTROWS(FILTER(DO0, [DN] = d)))
+VAR M = " typed into an amount field (looks like an order, delivery or phone number). This inflates the totals."
+VAR U = UNION(
+  // ---- High: amounts that look like ID numbers (the classic "total jumped to billions") ----
+  SELECTCOLUMNS(FILTER(B, [Fin] >= 1000000), "S", 1, "K", "Amount looks like an ID number", "I", [I], "F", [F], "T", [T], "Fd", "FinalAmount", "V", FORMAT([Fin], "#,0"), "P", IF(FORMAT([Fin], "0") = [F], "The order number was typed into the final amount. This inflates the totals.", "Final amount over 1 million" & M), "W", "Correct the amount at source.", "A", [Fin]),
+  SELECTCOLUMNS(FILTER(B, [Ini] >= 1000000), "S", 1, "K", "Amount looks like an ID number", "I", [I], "F", [F], "T", [T], "Fd", "InitialAmount", "V", FORMAT([Ini], "#,0"), "P", IF(FORMAT([Ini], "0") = [F], "The order number was typed into the initial amount. This inflates the totals.", "Initial amount over 1 million" & M), "W", "Correct the amount at source.", "A", [Ini]),
+  SELECTCOLUMNS(FILTER(B, [Inv] >= 1000000), "S", 1, "K", "Amount looks like an ID number", "I", [I], "F", [F], "T", [T], "Fd", "InvoiceAmount", "V", FORMAT([Inv], "#,0"), "P", "Invoice amount over 1 million" & M, "W", "Correct the amount at source.", "A", [Inv]),
+  // ---- High: amounts far from this vendor's usual invoice ----
+  SELECTCOLUMNS(FILTER(B, [Med] > 0 && [Fin] < 1000000 && [Fin] > 2.5 * [Med]), "S", 1, "K", "Amount far above usual", "I", [I], "F", [F], "T", [T], "Fd", "FinalAmount", "V", FORMAT([Fin], "#,0"), "P", "Final amount is " & FORMAT([Fin] / [Med], "0.0") & "x this vendor's usual invoice (" & FORMAT([Med], "#,0") & ").", "W", "Check against the payment advice.", "A", [Fin]),
+  SELECTCOLUMNS(FILTER(B, [Med] > 0 && [Ini] < 1000000 && [Ini] > 2.5 * [Med]), "S", 1, "K", "Amount far above usual", "I", [I], "F", [F], "T", [T], "Fd", "InitialAmount", "V", FORMAT([Ini], "#,0"), "P", "Initial amount is " & FORMAT([Ini] / [Med], "0.0") & "x this vendor's usual invoice (" & FORMAT([Med], "#,0") & ").", "W", "Check against the payment advice.", "A", [Ini]),
+  SELECTCOLUMNS(FILTER(B, [Med] > 0 && [Ini] > 0 && [Ini] < 0.3 * [Med]), "S", 1, "K", "Amount far below usual", "I", [I], "F", [F], "T", [T], "Fd", "InitialAmount", "V", FORMAT([Ini], "#,0"), "P", "Initial amount is only " & FORMAT([Ini] / [Med], "0%") & " of this vendor's usual " & FORMAT([Med], "#,0") & " - possible missing zero.", "W", "Check against the payment advice.", "A", [Ini]),
+  // ---- High: the same order or payment counted twice ----
+  SELECTCOLUMNS(FILTER(B, [nF] > 1), "S", 1, "K", "Duplicate order", "I", [I], "F", [F], "T", [T], "Fd", "OrderID", "V", [F], "P", "This order number is on " & [nF] & " rows, so its amounts are counted " & [nF] & " times.", "W", "Remove the duplicate or fix the order number.", "A", [Ini] + [Fin]),
+  SELECTCOLUMNS(FILTER(B, [nIR] > 1), "S", 1, "K", "Payment ref used twice", "I", [I], "F", [F], "T", [T], "Fd", "InitialRef", "V", [IR], "P", "Same initial payment ref on " & [nIR] & " orders - one payment may be counted twice.", "W", "Check with the payments team.", "A", [Ini]),
+  SELECTCOLUMNS(FILTER(B, [nFR] > 1), "S", 1, "K", "Payment ref used twice", "I", [I], "F", [F], "T", [T], "Fd", "FinalRef", "V", [FR], "P", "Same final payment ref on " & [nFR] & " orders - one payment may be counted twice.", "W", "Check with the payments team.", "A", [Fin]),
+  // ---- High: possible payment to the wrong account ----
+  SELECTCOLUMNS(FILTER(B, NOT ISBLANK([AO]) && [nAS] = 1), "S", 1, "K", "Wrong vendor account?", "I", [I], "F", [F], "T", [T], "Fd", "VendorAccount", "V", [AC], "P", "This account normally belongs to " & [AO] & ", not " & [T] & ".", "W", "Confirm which account was paid.", "A", [Ini] + [Fin]),
+  SELECTCOLUMNS(FILTER(B, ISBLANK([AO]) && [nAS] = 1 && [nT] >= 3 && [MA] <> [AC]), "S", 1, "K", "Wrong vendor account?", "I", [I], "F", [F], "T", [T], "Fd", "VendorAccount", "V", [AC], "P", [T] & " is usually paid to " & [MA] & ". This account is used only once - possible typo.", "W", "Confirm which account was paid.", "A", [Ini] + [Fin]),
+  // ---- High: stuck payments ----
+  SELECTCOLUMNS(FILTER(B, [ES] = "Initial Payment Pending" && D0 - COALESCE([FC], [SD]) > 7), "S", 1, "K", "Payment overdue", "I", [I], "F", [F], "T", [T], "Fd", "Status", "V", [ES], "P", "Approved " & INT(D0 - COALESCE([FC], [SD])) & " days ago and the initial payment is still not made.", "W", "Escalate or cancel the order.", "A", [Inv]),
+  // ---- Medium: process gaps ----
+  SELECTCOLUMNS(FILTER(B, [Fin] > 0 && [FR] = "" && ISBLANK([PC])), "S", 2, "K", "Payment not confirmed", "I", [I], "F", [F], "T", [T], "Fd", "FinalRef", "V", "(blank)", "P", "Final amount " & FORMAT([Fin], "#,0") & " has no payment ref or completed date, so it is left out of Total paid.", "W", "Confirm or remove.", "A", [Fin]),
+  SELECTCOLUMNS(FILTER(B, [Ini] > 0 && [IR] = "" && D0 - COALESCE([IP], [FC], [SD]) > 5), "S", 2, "K", "Payment not confirmed", "I", [I], "F", [F], "T", [T], "Fd", "InitialRef", "V", "(blank)", "P", "Initial amount " & FORMAT([Ini], "#,0") & " has no payment ref after 5 days, so it is left out of Total paid.", "W", "Add the payment reference.", "A", [Ini]),
+  SELECTCOLUMNS(FILTER(B, [Fin] > 0 && NOT([Ini] > 0)), "S", 2, "K", "Final paid without initial", "I", [I], "F", [F], "T", [T], "Fd", "InitialAmount", "V", "(blank)", "P", "A final payment of " & FORMAT([Fin], "#,0") & " is recorded but no initial payment.", "W", "Check if the initial was paid outside the process.", "A", [Fin]),
+  SELECTCOLUMNS(FILTER(B, [ES] = "Pending Approval" && D0 - [SD] > 3), "S", 2, "K", "Approval overdue", "I", [I], "F", [F], "T", [T], "Fd", "Status", "V", [ES], "P", "Waiting " & INT(D0 - [SD]) & " days for approval.", "W", "Follow up with the approver.", "A", [Inv]),
+  SELECTCOLUMNS(FILTER(B, NOT ISBLANK([IP]) && NOT ISBLANK([AD]) && INT([IP]) < INT([AD])), "S", 2, "K", "Paid before approval", "I", [I], "F", [F], "T", [T], "Fd", "InitialPaidDate", "V", FORMAT([IP], "dd mmm yyyy"), "P", "Initial payment is dated before the order was assigned (" & FORMAT([AD], "dd mmm") & ").", "W", "Confirm the payment date.", "A", [Ini]),
+  SELECTCOLUMNS(FILTER(B, NOT (LEN([F]) = 10 && LEFT([F], 2) = "71")), "S", 2, "K", "Order number not valid", "I", [I], "F", [F], "T", [T], "Fd", "OrderID", "V", [F], "P", "Order numbers are 10 digits starting 71 - this looks like another kind of number.", "W", "Enter the real order number.", "A", BLANK()),
+  SELECTCOLUMNS(FILTER(B, [TM] = "Unmatched (review)"), "S", 2, "K", "New vendor", "I", [I], "F", [F], "T", [T], "Fd", "VendorNameTyped", "V", [TT], "P", "Not in the vendor master. Paid to account " & [AC] & ".", "W", "Verify, then add to vendors.csv.", "A", BLANK()),
+  SELECTCOLUMNS(FILTER(DB, [nF] = 0), "S", 2, "K", "Delivery not linked to an order", "I", [I], "F", [F], "T", [T], "Fd", "OrderID (deliveries)", "V", [F], "P", "Delivery " & [DN] & " points to an order that does not exist" & IF([nDN] > 1, ", and the same delivery is under another order.", "."), "W", "Relink or delete this delivery row.", "A", BLANK()),
+  SELECTCOLUMNS(FILTER(DB, [nF] > 0 && [nDN] > 1), "S", 2, "K", "Duplicate delivery", "I", [I], "F", [F], "T", [T], "Fd", "DeliveryID", "V", [DN], "P", "This delivery number appears " & [nDN] & " times.", "W", "Remove the duplicate row.", "A", BLANK()),
+  // ---- Low: housekeeping ----
+  SELECTCOLUMNS(FILTER(B, CONTAINSSTRING([VN], "@") || LEN([VN]) > 12 || LEFT([VN], 1) IN {"0","1","2","3","4","5","6","7","8","9"}), "S", 3, "K", "Vehicle number not valid", "I", [I], "F", [F], "T", [T], "Fd", "VehicleNumber", "V", [VN], "P", "Not a plate number (looks like a phone number or email).", "W", "Enter the plate number.", "A", BLANK()),
+  SELECTCOLUMNS(FILTER(B, [nD] = 0), "S", 3, "K", "Order has no deliveries", "I", [I], "F", [F], "T", [T], "Fd", "Deliveries", "V", "0", "P", "No deliveries are linked to this order.", "W", "Add the deliveries or fix the order number.", "A", BLANK()),
+  SELECTCOLUMNS(FILTER(DB, NOT (LEN([DN]) = 10 && LEFT([DN], 2) = "88")), "S", 3, "K", "Delivery number not valid", "I", [I], "F", [F], "T", [T], "Fd", "DeliveryID", "V", [DN], "P", "Delivery numbers are 10 digits starting 88.", "W", "Correct the delivery number.", "A", BLANK()),
+  SELECTCOLUMNS(FILTER(DB, [DM] IN {"Unmatched (review)", "Auto - fuzzy (review)"}), "S", 3, "K", "Customer not confirmed", "I", [I], "F", [F], "T", [T], "Fd", "CustomerNameTyped", "V", [DT], "P", IF([DM] = "Unmatched (review)", "Customer not found in the customer list.", "Customer matched automatically - please confirm."), "W", "Add it to customer_aliases.csv.", "A", BLANK()))
+RETURN SELECTCOLUMNS(U, "Severity", SWITCH([S], 1, "High", 2, "Medium", "Low"), "Severity Order", [S], "Check", [K], "Where", [I], "Order", [F], "Vendor", [T], "Field", [Fd], "Value Entered", [V], "Problem", [P], "What To Do", [W], "Amount Involved", [A])
