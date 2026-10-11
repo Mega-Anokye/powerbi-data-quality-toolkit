@@ -8,7 +8,7 @@
 
 ## Why this exists
 
-In a real payments report I maintain, the headline total once jumped to billions overnight. Nothing was wrong with the visuals; someone had typed an order number into the "final amount" field. Finding that row took an afternoon.
+In a payments report, one typo can push the headline total into the billions overnight: an order number typed into the "final amount" field. Nothing is wrong with the visuals, and finding that row by hand can take an afternoon.
 
 These patterns turn that afternoon into a glance. A calculated table re-runs about 25 data-quality rules on every refresh. A **Data checks** page lists each problem with:
 
@@ -66,7 +66,7 @@ The 5-day rule and "overdue" checks use today's date, so counts can change over 
 
 ## Notes
 
-- Built on a real project, rebuilt from scratch on made-up data. No company data, names or numbers are included.
+- Built from scratch on made-up data. All vendors, customers, accounts and amounts are fictional.
 - Developed with Claude connected to Power BI Desktop through Microsoft's Power BI Modeling MCP server.
 
 ## License
