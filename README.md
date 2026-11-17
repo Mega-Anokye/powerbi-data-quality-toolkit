@@ -73,4 +73,8 @@ The 5-day rule and "overdue" checks use today's date, so counts can change over 
 
 MIT, see [LICENSE](LICENSE).
 
-Made by [Mega Anokye](https://mega-anokye.vercel.app/).
+## About me
+
+I'm Mega Anokye, a data analyst in Accra who makes numbers trustworthy. At Multipro (Tolaram Group) I build Power BI reporting used by 350+ people across five branches, validation checks that cut reporting errors by 25%, and Power Automate systems such as a five-stage payment-approval workflow with a verification gate and full audit trail. I also train a 200+ sales force and coach 14+ area sales managers on Power BI. This toolkit is how I make reports catch their own mistakes.
+
+[Portfolio](https://mega-anokye.vercel.app) · [LinkedIn](https://www.linkedin.com/in/mega-anokye/) · [GitHub](https://github.com/Mega-Anokye)
